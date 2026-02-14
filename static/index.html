@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Starship Chatbot Service</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; }
+
+  /* Tabs */
+  .tabs { display: flex; background: #1a1a2e; }
+  .tab { padding: 14px 28px; color: #aaa; cursor: pointer; border-bottom: 3px solid transparent; transition: all .2s; }
+  .tab:hover { color: #fff; }
+  .tab.active { color: #fff; border-bottom-color: #6c63ff; }
+  .tab-content { display: none; padding: 24px; max-width: 900px; margin: 0 auto; }
+  .tab-content.active { display: block; }
+
+  /* Cards */
+  .card { background: #fff; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+  .card h3 { margin-bottom: 16px; color: #1a1a2e; }
+
+  /* Forms */
+  label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #555; }
+  input[type=text], input[type=password] { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; margin-bottom: 12px; }
+  input:focus { outline: none; border-color: #6c63ff; }
+  button { padding: 10px 20px; background: #6c63ff; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; transition: background .2s; }
+  button:hover { background: #5a52d5; }
+  button:disabled { background: #ccc; cursor: not-allowed; }
+  .btn-secondary { background: #e0e0e0; color: #333; }
+  .btn-secondary:hover { background: #d0d0d0; }
+  .btn-danger { background: #e74c3c; }
+  .btn-danger:hover { background: #c0392b; }
+
+  /* Chat */
+  .chat-container { height: 500px; overflow-y: auto; border: 1px solid #eee; border-radius: 12px; padding: 16px; margin-bottom: 16px; background: #fafafa; }
+  .msg { max-width: 80%; margin-bottom: 12px; padding: 12px 16px; border-radius: 16px; line-height: 1.5; font-size: 14px; }
+  .msg.user { background: #6c63ff; color: #fff; margin-left: auto; border-bottom-right-radius: 4px; }
+  .msg.bot { background: #fff; border: 1px solid #eee; border-bottom-left-radius: 4px; }
+  .msg .meta { font-size: 11px; color: #999; margin-top: 6px; }
+  .msg.user .meta { color: rgba(255,255,255,.7); }
+  .chat-input { display: flex; gap: 8px; }
+  .chat-input input { flex: 1; margin-bottom: 0; }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #eee; }
+  th { font-weight: 600; color: #555; font-size: 12px; text-transform: uppercase; }
+  td { color: #333; }
+  .mono { font-family: 'SF Mono', Monaco, monospace; font-size: 12px; color: #6c63ff; }
+
+  /* Status */
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+  .badge.ok { background: #e8f5e9; color: #2e7d32; }
+  .badge.warn { background: #fff3e0; color: #e65100; }
+
+  /* Upload */
+  .upload-area { border: 2px dashed #ddd; border-radius: 12px; padding: 32px; text-align: center; color: #999; margin-bottom: 16px; cursor: pointer; transition: border-color .2s; }
+  .upload-area:hover { border-color: #6c63ff; }
+  .upload-area.active { border-color: #6c63ff; background: #f8f7ff; }
+  #upload-file-name { margin-top: 8px; font-weight: 600; color: #333; }
+
+  .row { display: flex; gap: 16px; align-items: flex-end; }
+  .row > * { flex: 1; }
+  .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; }
+  .stat-box { text-align: center; padding: 16px; background: #f8f7ff; border-radius: 8px; }
+  .stat-box .num { font-size: 28px; font-weight: 700; color: #6c63ff; }
+  .stat-box .label { font-size: 12px; color: #888; margin-top: 4px; }
+
+  .hidden { display: none; }
+  .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: 8px; color: #fff; font-size: 14px; z-index: 100; animation: slideIn .3s; }
+  .toast.success { background: #2e7d32; }
+  .toast.error { background: #c62828; }
+  @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+</style>
+</head>
+<body>
+
+<div class="tabs">
+  <div class="tab active" data-tab="chat">Chat</div>
+  <div class="tab" data-tab="admin">Admin</div>
+  <div class="tab" data-tab="settings">Settings</div>
+</div>
+
+<!-- ===== CHAT TAB ===== -->
+<div id="tab-chat" class="tab-content active">
+  <div class="card">
+    <div class="chat-container" id="chat-messages">
+      <div class="msg bot">Hello! Configure your API key in <b>Settings</b>, then ask me anything.</div>
+    </div>
+    <div class="chat-input">
+      <input type="text" id="chat-input" placeholder="Type your question..." onkeydown="if(event.key==='Enter')sendMessage()">
+      <button onclick="sendMessage()" id="btn-send">Send</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== ADMIN TAB ===== -->
+<div id="tab-admin" class="tab-content">
+  <!-- Create Client -->
+  <div class="card">
+    <h3>Create Client</h3>
+    <div class="row">
+      <div>
+        <label>Client Name</label>
+        <input type="text" id="new-client-name" placeholder="e.g. Syra Health">
+      </div>
+      <div style="flex:0">
+        <button onclick="createClient()">Create</button>
+      </div>
+    </div>
+    <div id="new-client-result" class="hidden" style="margin-top:12px; padding:12px; background:#f8f7ff; border-radius:8px;">
+      <p><b>Client API Key:</b> <span id="new-client-key" class="mono"></span></p>
+      <p style="font-size:12px; color:#999; margin-top:4px;">Save this key! It won't be shown again.</p>
+    </div>
+  </div>
+
+  <!-- Client List -->
+  <div class="card">
+    <h3>Clients</h3>
+    <button onclick="loadClients()" class="btn-secondary" style="margin-bottom:12px;">Refresh</button>
+    <table>
+      <thead><tr><th>Name</th><th>ID</th><th>Version</th><th>Status</th><th>Action</th></tr></thead>
+      <tbody id="clients-table"><tr><td colspan="5" style="color:#999">Click Refresh to load</td></tr></tbody>
+    </table>
+  </div>
+
+  <!-- Upload JSON -->
+  <div class="card">
+    <h3>Upload JSON</h3>
+    <div class="row" style="margin-bottom:12px">
+      <div>
+        <label>Client ID</label>
+        <input type="text" id="upload-client-id" placeholder="UUID from client list">
+      </div>
+    </div>
+    <div class="upload-area" id="upload-area" onclick="document.getElementById('file-input').click()">
+      <input type="file" id="file-input" accept=".json" style="display:none" onchange="handleFile(this)">
+      <p>Click to select JSON file or drag &amp; drop</p>
+      <p id="upload-file-name"></p>
+    </div>
+    <button onclick="uploadFile()" id="btn-upload">Upload &amp; Embed</button>
+    <div id="upload-stats" class="hidden">
+      <div class="stats-grid">
+        <div class="stat-box"><div class="num" id="stat-total">0</div><div class="label">Total QA Pairs</div></div>
+        <div class="stat-box"><div class="num" id="stat-new">0</div><div class="label">New (Embedded)</div></div>
+        <div class="stat-box"><div class="num" id="stat-unchanged">0</div><div class="label">Unchanged</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SETTINGS TAB ===== -->
+<div id="tab-settings" class="tab-content">
+  <div class="card">
+    <h3>API Keys</h3>
+    <label>Admin API Key (for managing clients &amp; uploads)</label>
+    <input type="password" id="admin-key" placeholder="Your ADMIN_API_KEY" value="">
+    <label>Client API Key (for chat — the sk-... key)</label>
+    <input type="password" id="client-key" placeholder="sk-...">
+    <label>Session ID (optional)</label>
+    <input type="text" id="session-id" placeholder="Leave blank for auto-generated" value="web-ui-1">
+    <button onclick="saveSettings()">Save</button>
+  </div>
+  <div class="card">
+    <h3>Health Check</h3>
+    <button onclick="checkHealth()" class="btn-secondary">Check</button>
+    <div id="health-result" style="margin-top:12px;"></div>
+  </div>
+</div>
+
+<script>
+const BASE = window.location.origin;
+
+// --- Tab switching ---
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+// --- Toast ---
+function toast(msg, type = 'success') {
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+// --- Settings ---
+function getAdminKey() { return localStorage.getItem('admin_key') || ''; }
+function getClientKey() { return localStorage.getItem('client_key') || ''; }
+function getSessionId() { return localStorage.getItem('session_id') || 'web-ui-1'; }
+
+function saveSettings() {
+  localStorage.setItem('admin_key', document.getElementById('admin-key').value);
+  localStorage.setItem('client_key', document.getElementById('client-key').value);
+  localStorage.setItem('session_id', document.getElementById('session-id').value || 'web-ui-1');
+  toast('Settings saved!');
+}
+
+// Load saved settings
+document.getElementById('admin-key').value = getAdminKey();
+document.getElementById('client-key').value = getClientKey();
+document.getElementById('session-id').value = getSessionId();
+
+// --- Chat ---
+async function sendMessage() {
+  const input = document.getElementById('chat-input');
+  const question = input.value.trim();
+  if (!question) return;
+
+  const key = getClientKey();
+  if (!key) { toast('Set your Client API Key in Settings first', 'error'); return; }
+
+  // Show user message
+  appendMsg(question, 'user');
+  input.value = '';
+  document.getElementById('btn-send').disabled = true;
+
+  try {
+    const res = await fetch(BASE + '/api/v1/chat', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question, session_id: getSessionId() })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Request failed');
+
+    const sourceLink = data.source_url ? `<a href="${data.source_url}" target="_blank" style="color:#6c63ff;">Source</a>` : '';
+    const meta = `Confidence: ${(data.confidence * 100).toFixed(1)}% | Topic: ${data.source_topic || 'N/A'} ${sourceLink ? '| ' + sourceLink : ''}`;
+    appendMsg(data.answer, 'bot', meta);
+  } catch (e) {
+    appendMsg('Error: ' + e.message, 'bot');
+  }
+  document.getElementById('btn-send').disabled = false;
+}
+
+function appendMsg(text, role, meta = '') {
+  const container = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.innerHTML = text + (meta ? '<div class="meta">' + meta + '</div>' : '');
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+// --- Admin: Create Client ---
+async function createClient() {
+  const name = document.getElementById('new-client-name').value.trim();
+  if (!name) return;
+  const key = getAdminKey();
+  if (!key) { toast('Set your Admin API Key in Settings first', 'error'); return; }
+
+  try {
+    const res = await fetch(BASE + '/api/v1/admin/clients', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Failed');
+
+    document.getElementById('new-client-key').textContent = data.api_key;
+    document.getElementById('new-client-result').classList.remove('hidden');
+    toast('Client created!');
+    loadClients();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+// --- Admin: List Clients ---
+async function loadClients() {
+  const key = getAdminKey();
+  if (!key) { toast('Set your Admin API Key in Settings first', 'error'); return; }
+
+  try {
+    const res = await fetch(BASE + '/api/v1/admin/clients', {
+      headers: { 'Authorization': 'Bearer ' + key }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Failed');
+
+    const tbody = document.getElementById('clients-table');
+    if (data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="color:#999">No clients yet</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.map(c => `<tr>
+      <td><b>${c.name}</b></td>
+      <td class="mono">${c.id.substring(0, 8)}...</td>
+      <td>v${c.active_version}</td>
+      <td><span class="badge ${c.is_active ? 'ok' : 'warn'}">${c.is_active ? 'Active' : 'Inactive'}</span></td>
+      <td><button class="btn-secondary" onclick="navigator.clipboard.writeText('${c.id}');toast('ID copied!');" style="padding:4px 12px;font-size:12px;">Copy ID</button></td>
+    </tr>`).join('');
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+// --- Admin: Upload ---
+let selectedFile = null;
+
+function handleFile(input) {
+  selectedFile = input.files[0];
+  document.getElementById('upload-file-name').textContent = selectedFile ? selectedFile.name : '';
+  document.getElementById('upload-area').classList.toggle('active', !!selectedFile);
+}
+
+// Drag and drop
+const uploadArea = document.getElementById('upload-area');
+uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('active'); });
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('active'));
+uploadArea.addEventListener('drop', e => {
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  if (file && file.name.endsWith('.json')) {
+    selectedFile = file;
+    document.getElementById('upload-file-name').textContent = file.name;
+  }
+});
+
+async function uploadFile() {
+  const clientId = document.getElementById('upload-client-id').value.trim();
+  if (!clientId) { toast('Enter a Client ID', 'error'); return; }
+  if (!selectedFile) { toast('Select a JSON file', 'error'); return; }
+  const key = getAdminKey();
+  if (!key) { toast('Set your Admin API Key in Settings first', 'error'); return; }
+
+  const btn = document.getElementById('btn-upload');
+  btn.disabled = true;
+  btn.textContent = 'Uploading & Embedding...';
+
+  try {
+    const form = new FormData();
+    form.append('file', selectedFile);
+
+    const res = await fetch(BASE + '/api/v1/admin/clients/' + clientId + '/upload', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + key },
+      body: form
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Upload failed');
+
+    document.getElementById('stat-total').textContent = data.qa_pairs_total;
+    document.getElementById('stat-new').textContent = data.qa_pairs_new;
+    document.getElementById('stat-unchanged').textContent = data.qa_pairs_unchanged;
+    document.getElementById('upload-stats').classList.remove('hidden');
+    toast('Upload complete! v' + data.version);
+    loadClients();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+  btn.disabled = false;
+  btn.textContent = 'Upload & Embed';
+}
+
+// --- Health ---
+async function checkHealth() {
+  try {
+    const res = await fetch(BASE + '/api/v1/health', {
+      headers: { 'Authorization': 'Bearer ' + (getClientKey() || getAdminKey()) }
+    });
+    const data = await res.json();
+    document.getElementById('health-result').innerHTML =
+      `Service: <span class="badge ok">${data.status}</span> &nbsp; Database: <span class="badge ${data.database === 'ok' ? 'ok' : 'warn'}">${data.database}</span>`;
+  } catch (e) {
+    document.getElementById('health-result').innerHTML = `<span class="badge warn">Unreachable</span>`;
+  }
+}
+</script>
+</body>
+</html>
