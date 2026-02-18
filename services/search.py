@@ -23,6 +23,7 @@ async def search(
     sql = text("""
         SELECT
             q.id,
+            q.topic_id,
             q.question,
             q.answer,
             t.topic_name AS source_topic,
@@ -50,6 +51,7 @@ async def search(
     return [
         {
             "qa_id": row["id"],
+            "topic_id": row["topic_id"],
             "question": row["question"],
             "answer": row["answer"],
             "source_topic": row["source_topic"],

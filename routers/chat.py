@@ -64,6 +64,8 @@ async def chat(
         source_topic=best["source_topic"],
         source_url=best["source_url"],
         session_id=session_id,
+        matched_qa_id=best["qa_id"],
+        matched_topic_id=best["topic_id"],
     )
 
 

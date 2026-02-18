@@ -52,6 +52,64 @@ class RotateKeyResponse(BaseModel):
     new_api_key: str
 
 
+# ── Admin: Q&A Editor ─────────────────────────────────────────
+
+class QAEditRequest(BaseModel):
+    new_question: str = Field(..., min_length=1)
+    new_answer: str = Field(..., min_length=1)
+
+
+class QADeleteRequest(BaseModel):
+    qa_pair_ids: list[uuid.UUID] = Field(..., min_length=1)
+
+
+class TopicListItem(BaseModel):
+    id: uuid.UUID
+    topic_index: int
+    topic_name: str
+    semantic_path: str | None
+    original_url: str | None
+    qa_count: int
+
+    model_config = {"from_attributes": True}
+
+
+class QAPairItem(BaseModel):
+    id: uuid.UUID
+    qa_index: int
+    question: str
+    answer: str
+    is_bucketed: bool
+    bucket_id: str | None
+    combined_hash: str
+
+    model_config = {"from_attributes": True}
+
+
+class TopicDetail(BaseModel):
+    id: uuid.UUID
+    topic_index: int
+    topic_name: str
+    semantic_path: str | None
+    original_url: str | None
+    qa_pairs: list[QAPairItem]
+
+    model_config = {"from_attributes": True}
+
+
+class QAEditResponse(BaseModel):
+    message: str
+    qa_pair_id: uuid.UUID
+    old_hash: str
+    new_hash: str
+    re_embedded: bool
+
+
+class QADeleteResponse(BaseModel):
+    message: str
+    deleted_count: int
+
+
 # ── Chat ────────────────────────────────────────────────────────
 
 class ChatRequest(BaseModel):
@@ -66,6 +124,8 @@ class ChatResponse(BaseModel):
     source_url: str | None = None
     session_id: str
     matched_by: str = "v3_gemini_qa"
+    matched_qa_id: uuid.UUID | None = None
+    matched_topic_id: uuid.UUID | None = None
 
 
 # ── Conversations ───────────────────────────────────────────────

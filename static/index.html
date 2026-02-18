@@ -15,6 +15,7 @@
   .tab.active { color: #fff; border-bottom-color: #6c63ff; }
   .tab-content { display: none; padding: 24px; max-width: 900px; margin: 0 auto; }
   .tab-content.active { display: block; }
+  #tab-editor.active { max-width: 1200px; }
 
   /* Cards */
   .card { background: #fff; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
@@ -38,6 +39,8 @@
   .msg.user { background: #6c63ff; color: #fff; margin-left: auto; border-bottom-right-radius: 4px; }
   .msg.bot { background: #fff; border: 1px solid #eee; border-bottom-left-radius: 4px; }
   .msg .meta { font-size: 11px; color: #999; margin-top: 6px; }
+  .msg .meta a[title="Edit this answer in Editor"] { opacity: 0.4; transition: opacity .2s; }
+  .msg .meta a[title="Edit this answer in Editor"]:hover { opacity: 1; color: #6c63ff; }
   .msg.user .meta { color: rgba(255,255,255,.7); }
   .chat-input { display: flex; gap: 8px; }
   .chat-input input { flex: 1; margin-bottom: 0; }
@@ -72,6 +75,41 @@
   .toast.success { background: #2e7d32; }
   .toast.error { background: #c62828; }
   @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+  /* Editor */
+  .editor-layout { display: grid; grid-template-columns: 280px 1fr; gap: 16px; height: calc(100vh - 120px); }
+  .topic-list { overflow-y: auto; }
+  .topic-item { padding: 10px 12px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; transition: all .15s; display: flex; justify-content: space-between; align-items: center; }
+  .topic-item:hover { background: #f8f7ff; }
+  .topic-item.active { background: #f0eeff; border-color: #6c63ff; }
+  .topic-item .name { font-weight: 600; font-size: 14px; }
+  .topic-item .count { font-size: 12px; color: #999; }
+  .qa-list { overflow-y: auto; }
+  .qa-card { padding: 14px; margin-bottom: 8px; border: 2px solid #eee; border-radius: 10px; transition: all .15s; }
+  .qa-card:hover { border-color: #ddd; }
+  .qa-card.selected { border-color: #6c63ff; background: #f8f7ff; }
+  .qa-card.editing { border-color: #2e7d32; background: #f1f8e9; }
+  .qa-card .q { font-weight: 600; margin-bottom: 6px; font-size: 14px; }
+  .qa-card .a { font-size: 13px; color: #555; line-height: 1.5; }
+  .qa-card .bucket-tag { display: inline-block; margin-top: 6px; padding: 2px 8px; background: #e3f2fd; color: #1565c0; border-radius: 10px; font-size: 11px; }
+  .qa-actions { display: flex; gap: 6px; margin-top: 8px; }
+  .qa-actions button { padding: 4px 12px; font-size: 12px; }
+  .qa-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
+  .qa-header h3 { margin: 0; }
+  .qa-header .url { font-size: 12px; color: #6c63ff; text-decoration: none; display: block; margin-top: 4px; }
+  .qa-header .url:hover { text-decoration: underline; }
+  .editor-toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
+  .edit-fields textarea, .edit-fields input[type=text] { width: 100%; margin-bottom: 8px; }
+  .edit-fields textarea { height: 100px; resize: vertical; padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 13px; font-family: inherit; }
+  .save-indicator { padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; }
+  .save-indicator.re-embedded { background: #e8f5e9; color: #2e7d32; }
+  .save-indicator.unchanged { background: #fff3e0; color: #e65100; }
+  .editor-login { max-width: 400px; margin: 60px auto; }
+  .qa-checkbox { margin-right: 10px; cursor: pointer; width: 16px; height: 16px; accent-color: #6c63ff; }
+  .qa-row { display: flex; align-items: flex-start; }
+  .qa-row .qa-content { flex: 1; }
+  .btn-edit { background: #f5f5f5; color: #333; padding: 4px 10px; font-size: 12px; border: 1px solid #ddd; }
+  .btn-edit:hover { background: #eee; }
 </style>
 </head>
 <body>
@@ -79,6 +117,7 @@
 <div class="tabs">
   <div class="tab active" data-tab="chat">Chat</div>
   <div class="tab" data-tab="admin">Admin</div>
+  <div class="tab" data-tab="editor">Editor</div>
   <div class="tab" data-tab="settings">Settings</div>
 </div>
 
@@ -145,6 +184,39 @@
         <div class="stat-box"><div class="num" id="stat-total">0</div><div class="label">Total QA Pairs</div></div>
         <div class="stat-box"><div class="num" id="stat-new">0</div><div class="label">New (Embedded)</div></div>
         <div class="stat-box"><div class="num" id="stat-unchanged">0</div><div class="label">Unchanged</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== EDITOR TAB ===== -->
+<div id="tab-editor" class="tab-content">
+  <!-- Login Gate -->
+  <div id="editor-login" class="editor-login">
+    <div class="card">
+      <h3>Connect to Client</h3>
+      <div id="editor-login-error" class="hidden" style="padding:8px 12px;background:#fdecea;color:#c62828;border-radius:8px;margin-bottom:12px;font-size:13px;"></div>
+      <label>Client ID</label>
+      <input type="text" id="editor-client-id" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+      <label>Admin API Key</label>
+      <input type="password" id="editor-api-key" placeholder="Your ADMIN_API_KEY">
+      <button onclick="editorLogin()" id="btn-editor-login">Connect</button>
+    </div>
+  </div>
+
+  <!-- Editor Main (hidden until login) -->
+  <div id="editor-main" class="hidden">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h3 style="color:#1a1a2e;">Q&A Editor</h3>
+      <button class="btn-secondary" onclick="editorLogout()">Disconnect</button>
+    </div>
+    <div id="editor-save-status" class="hidden save-indicator" style="margin-bottom:12px;"></div>
+    <div class="editor-layout">
+      <div class="card topic-list" id="editor-topics" style="margin-bottom:0;">
+        <p style="color:#999;font-size:13px;">Loading topics...</p>
+      </div>
+      <div class="card qa-list" id="editor-detail" style="margin-bottom:0;">
+        <p style="color:#999;text-align:center;margin-top:40px;">Select a topic to view Q&A pairs</p>
       </div>
     </div>
   </div>
@@ -232,7 +304,8 @@ async function sendMessage() {
     if (!res.ok) throw new Error(data.detail || 'Request failed');
 
     const sourceLink = data.source_url ? `<a href="${data.source_url}" target="_blank" style="color:#6c63ff;">Source</a>` : '';
-    const meta = `Confidence: ${(data.confidence * 100).toFixed(1)}% | Topic: ${data.source_topic || 'N/A'} ${sourceLink ? '| ' + sourceLink : ''}`;
+    const editLink = (data.matched_qa_id && data.matched_topic_id) ? `| <a href="#" onclick="navigateToEdit('${data.matched_topic_id}','${data.matched_qa_id}');return false;" style="color:#999;font-size:10px;" title="Edit this answer in Editor">&#9998; Edit</a>` : '';
+    const meta = `Confidence: ${(data.confidence * 100).toFixed(1)}% | Topic: ${data.source_topic || 'N/A'} ${sourceLink ? '| ' + sourceLink : ''} ${editLink}`;
     appendMsg(data.answer, 'bot', meta);
   } catch (e) {
     appendMsg('Error: ' + e.message, 'bot');
@@ -359,6 +432,296 @@ async function uploadFile() {
   }
   btn.disabled = false;
   btn.textContent = 'Upload & Embed';
+}
+
+// --- Navigate from Chat to Editor ---
+function navigateToEdit(topicId, qaId) {
+  // Switch to Editor tab
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelector('[data-tab="editor"]').classList.add('active');
+  document.getElementById('tab-editor').classList.add('active');
+
+  // If not logged in to editor, store the target and let user log in
+  if (!editorClientId || !editorApiKey) {
+    sessionStorage.setItem('editor_pending_topic', topicId);
+    sessionStorage.setItem('editor_pending_qa', qaId);
+    toast('Connect to the client first, then the QA pair will open automatically');
+    return;
+  }
+
+  // Already connected — load the topic and scroll to the QA pair
+  editorLoadTopicAndEdit(topicId, qaId);
+}
+
+async function editorLoadTopicAndEdit(topicId, qaId) {
+  try {
+    const res = await fetch(BASE + '/api/v1/admin/clients/' + editorClientId + '/topics/' + topicId, { headers: editorFetchHeaders() });
+    if (res.status === 401 || res.status === 403) { editorLogout(); toast('Session expired', 'error'); return; }
+    if (!res.ok) throw new Error('Failed to load topic');
+    editorCurrentTopic = await res.json();
+    editorSelectedQA.clear();
+    editorEditingId = qaId;
+    document.getElementById('editor-save-status').classList.add('hidden');
+    renderEditorTopics();
+    renderEditorDetail();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// --- Editor ---
+let editorClientId = '';
+let editorApiKey = '';
+let editorTopics = [];
+let editorCurrentTopic = null; // TopicDetail
+let editorSelectedQA = new Set(); // Set of QA pair UUIDs
+let editorEditingId = null;
+
+function editorAuthHeaders() {
+  return { 'Authorization': 'Bearer ' + editorApiKey, 'Content-Type': 'application/json' };
+}
+
+function editorFetchHeaders() {
+  return { 'Authorization': 'Bearer ' + editorApiKey };
+}
+
+async function editorLogin() {
+  const cid = document.getElementById('editor-client-id').value.trim();
+  const key = document.getElementById('editor-api-key').value.trim();
+  const errEl = document.getElementById('editor-login-error');
+  if (!cid || !key) { errEl.textContent = 'Both fields are required.'; errEl.classList.remove('hidden'); return; }
+
+  const btn = document.getElementById('btn-editor-login');
+  btn.disabled = true; btn.textContent = 'Connecting...';
+  errEl.classList.add('hidden');
+
+  try {
+    const res = await fetch(BASE + '/api/v1/admin/clients/' + cid + '/topics', { headers: { 'Authorization': 'Bearer ' + key } });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401 || res.status === 403) throw new Error('Invalid API Key.');
+      if (res.status === 404) throw new Error('Client not found.');
+      throw new Error(data.detail || 'Connection failed.');
+    }
+    editorClientId = cid;
+    editorApiKey = key;
+    sessionStorage.setItem('editor_cid', cid);
+    sessionStorage.setItem('editor_key', key);
+    document.getElementById('editor-login').classList.add('hidden');
+    document.getElementById('editor-main').classList.remove('hidden');
+    const topics = await res.json();
+    editorTopics = topics;
+    renderEditorTopics();
+    // Check for pending navigation from Chat tab
+    const pendingTopic = sessionStorage.getItem('editor_pending_topic');
+    const pendingQA = sessionStorage.getItem('editor_pending_qa');
+    if (pendingTopic && pendingQA) {
+      sessionStorage.removeItem('editor_pending_topic');
+      sessionStorage.removeItem('editor_pending_qa');
+      editorLoadTopicAndEdit(pendingTopic, pendingQA);
+    }
+  } catch (e) {
+    errEl.textContent = e.message; errEl.classList.remove('hidden');
+  }
+  btn.disabled = false; btn.textContent = 'Connect';
+}
+
+function editorLogout() {
+  editorClientId = ''; editorApiKey = '';
+  editorTopics = []; editorCurrentTopic = null;
+  editorSelectedQA.clear(); editorEditingId = null;
+  sessionStorage.removeItem('editor_cid');
+  sessionStorage.removeItem('editor_key');
+  document.getElementById('editor-login').classList.remove('hidden');
+  document.getElementById('editor-main').classList.add('hidden');
+  document.getElementById('editor-login-error').classList.add('hidden');
+  document.getElementById('editor-save-status').classList.add('hidden');
+}
+
+// Auto-restore session
+(function() {
+  const cid = sessionStorage.getItem('editor_cid');
+  const key = sessionStorage.getItem('editor_key');
+  if (cid && key) {
+    document.getElementById('editor-client-id').value = cid;
+    document.getElementById('editor-api-key').value = key;
+  }
+})();
+
+function renderEditorTopics() {
+  const el = document.getElementById('editor-topics');
+  if (editorTopics.length === 0) { el.innerHTML = '<p style="color:#999;font-size:13px;">No topics found.</p>'; return; }
+  el.innerHTML = editorTopics.map(t => `
+    <div class="topic-item ${editorCurrentTopic && editorCurrentTopic.id === t.id ? 'active' : ''}" onclick="editorLoadTopic('${t.id}')">
+      <span class="name">${escHtml(t.topic_name)}</span>
+      <span class="count">${t.qa_count}</span>
+    </div>
+  `).join('');
+}
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+async function editorLoadTopics() {
+  try {
+    const res = await fetch(BASE + '/api/v1/admin/clients/' + editorClientId + '/topics', { headers: editorFetchHeaders() });
+    if (res.status === 401 || res.status === 403) { editorLogout(); toast('Session expired', 'error'); return; }
+    if (!res.ok) throw new Error('Failed to load topics');
+    editorTopics = await res.json();
+    renderEditorTopics();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function editorLoadTopic(topicId) {
+  try {
+    const res = await fetch(BASE + '/api/v1/admin/clients/' + editorClientId + '/topics/' + topicId, { headers: editorFetchHeaders() });
+    if (res.status === 401 || res.status === 403) { editorLogout(); toast('Session expired', 'error'); return; }
+    if (!res.ok) throw new Error('Failed to load topic');
+    editorCurrentTopic = await res.json();
+    editorSelectedQA.clear();
+    editorEditingId = null;
+    document.getElementById('editor-save-status').classList.add('hidden');
+    renderEditorTopics();
+    renderEditorDetail();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function renderEditorDetail() {
+  const el = document.getElementById('editor-detail');
+  const t = editorCurrentTopic;
+  if (!t) { el.innerHTML = '<p style="color:#999;text-align:center;margin-top:40px;">Select a topic to view Q&A pairs</p>'; return; }
+
+  const urlHtml = t.original_url ? `<a class="url" href="${escHtml(t.original_url)}" target="_blank">${escHtml(t.original_url)}</a>` : '';
+  const selectedCount = editorSelectedQA.size;
+
+  let html = `
+    <div class="qa-header">
+      <div>
+        <h3>${escHtml(t.topic_name)}</h3>
+        ${urlHtml}
+        <span style="font-size:13px;color:#888;">${t.qa_pairs.length} Q&A pairs${selectedCount > 0 ? ' &middot; ' + selectedCount + ' selected' : ''}</span>
+      </div>
+      <button class="btn-secondary" onclick="editorCurrentTopic=null;editorSelectedQA.clear();renderEditorDetail();renderEditorTopics();" style="padding:6px 12px;font-size:12px;">Close</button>
+    </div>
+    <div class="editor-toolbar">
+      <button class="btn-danger" onclick="editorDeleteSelected()" ${selectedCount === 0 ? 'disabled' : ''} style="font-size:13px;padding:6px 14px;">Delete (${selectedCount})</button>
+    </div>
+  `;
+
+  html += t.qa_pairs.map(qa => {
+    const isSelected = editorSelectedQA.has(qa.id);
+    const isEditing = editorEditingId === qa.id;
+    let cls = 'qa-card';
+    if (isEditing) cls += ' editing';
+    else if (isSelected) cls += ' selected';
+
+    if (isEditing) {
+      return `<div class="${cls}">
+        <div class="edit-fields">
+          <label style="font-size:12px;">Question</label>
+          <input type="text" id="edit-q-${qa.id}" value="${escHtml(qa.question)}">
+          <label style="font-size:12px;">Answer</label>
+          <textarea id="edit-a-${qa.id}">${escHtml(qa.answer)}</textarea>
+          <div class="qa-actions">
+            <button onclick="editorSaveEdit('${qa.id}')" style="background:#2e7d32;">Save</button>
+            <button class="btn-secondary" onclick="editorCancelEdit()">Cancel</button>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    const bucketHtml = qa.is_bucketed ? `<span class="bucket-tag">Bucket: ${escHtml(qa.bucket_id || '')}</span>` : '';
+    return `<div class="${cls}">
+      <div class="qa-row">
+        <input type="checkbox" class="qa-checkbox" ${isSelected ? 'checked' : ''} onchange="editorToggleQA('${qa.id}')">
+        <div class="qa-content">
+          <div class="q">${escHtml(qa.question)}</div>
+          <div class="a">${escHtml(qa.answer)}</div>
+          ${bucketHtml}
+        </div>
+        <button class="btn-edit" onclick="editorStartEdit('${qa.id}','${escAttr(qa.question)}','${escAttr(qa.answer)}')" title="Edit">&#9998;</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = html;
+  el.scrollTop = 0;
+}
+
+function escAttr(s) {
+  return s.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;').replace(/\n/g,'\\n');
+}
+
+function editorToggleQA(id) {
+  if (editorSelectedQA.has(id)) editorSelectedQA.delete(id);
+  else editorSelectedQA.add(id);
+  renderEditorDetail();
+}
+
+function editorStartEdit(id, question, answer) {
+  editorEditingId = id;
+  document.getElementById('editor-save-status').classList.add('hidden');
+  renderEditorDetail();
+}
+
+function editorCancelEdit() {
+  editorEditingId = null;
+  renderEditorDetail();
+}
+
+async function editorSaveEdit(qaId) {
+  const q = document.getElementById('edit-q-' + qaId).value.trim();
+  const a = document.getElementById('edit-a-' + qaId).value.trim();
+  if (!q || !a) { toast('Question and answer cannot be empty', 'error'); return; }
+
+  try {
+    const res = await fetch(BASE + '/api/v1/admin/clients/' + editorClientId + '/qa-pairs/' + qaId, {
+      method: 'PUT',
+      headers: editorAuthHeaders(),
+      body: JSON.stringify({ new_question: q, new_answer: a })
+    });
+    if (res.status === 401 || res.status === 403) { editorLogout(); toast('Session expired', 'error'); return; }
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Save failed');
+
+    editorEditingId = null;
+    const statusEl = document.getElementById('editor-save-status');
+    if (data.re_embedded) {
+      statusEl.textContent = 'Saved — re-embedded';
+      statusEl.className = 'save-indicator re-embedded';
+    } else {
+      statusEl.textContent = 'Saved — embedding unchanged';
+      statusEl.className = 'save-indicator unchanged';
+    }
+    statusEl.classList.remove('hidden');
+    await editorLoadTopic(editorCurrentTopic.id);
+    await editorLoadTopics();
+    toast('QA pair updated!');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function editorDeleteSelected() {
+  const ids = Array.from(editorSelectedQA);
+  if (ids.length === 0) return;
+  if (!confirm('Delete ' + ids.length + ' Q&A pair(s)?')) return;
+
+  try {
+    const res = await fetch(BASE + '/api/v1/admin/clients/' + editorClientId + '/qa-pairs/delete', {
+      method: 'POST',
+      headers: editorAuthHeaders(),
+      body: JSON.stringify({ qa_pair_ids: ids })
+    });
+    if (res.status === 401 || res.status === 403) { editorLogout(); toast('Session expired', 'error'); return; }
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Delete failed');
+
+    editorSelectedQA.clear();
+    toast('Deleted ' + data.deleted_count + ' QA pair(s)');
+    await editorLoadTopic(editorCurrentTopic.id);
+    await editorLoadTopics();
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 // --- Health ---
