@@ -102,6 +102,12 @@ async def get_conversations(
     )
 
 
+@router.get("/verify-key")
+async def verify_key(client: Client = Depends(get_client_from_api_key)):
+    """Lightweight endpoint to verify a client API key is valid."""
+    return {"status": "ok", "client_name": client.name}
+
+
 @router.get("/health", response_model=HealthResponse)
 async def health(db: AsyncSession = Depends(get_db)):
     """Health check — verifies DB connectivity."""

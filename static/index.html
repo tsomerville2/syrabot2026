@@ -232,7 +232,8 @@
     <input type="password" id="client-key" placeholder="sk-...">
     <label>Session ID (optional)</label>
     <input type="text" id="session-id" placeholder="Leave blank for auto-generated" value="web-ui-1">
-    <button onclick="saveSettings()">Save</button>
+    <button onclick="saveSettings()" id="btn-save-settings">Save &amp; Verify</button>
+    <div id="settings-status" style="margin-top:12px;"></div>
   </div>
   <div class="card">
     <h3>Health Check</h3>
@@ -285,11 +286,64 @@ function getAdminKey() { return localStorage.getItem('admin_key') || ''; }
 function getClientKey() { return localStorage.getItem('client_key') || ''; }
 function getSessionId() { return localStorage.getItem('session_id') || 'web-ui-1'; }
 
-function saveSettings() {
-  localStorage.setItem('admin_key', document.getElementById('admin-key').value);
-  localStorage.setItem('client_key', document.getElementById('client-key').value);
-  localStorage.setItem('session_id', document.getElementById('session-id').value || 'web-ui-1');
-  toast('Settings saved!');
+async function saveSettings() {
+  const adminKey = document.getElementById('admin-key').value.trim();
+  const clientKey = document.getElementById('client-key').value.trim();
+  const sessionId = document.getElementById('session-id').value.trim() || 'web-ui-1';
+  const statusEl = document.getElementById('settings-status');
+  const btn = document.getElementById('btn-save-settings');
+
+  btn.disabled = true; btn.textContent = 'Verifying...';
+  statusEl.innerHTML = '';
+  let results = [];
+
+  // Validate Admin API Key
+  if (adminKey) {
+    try {
+      const res = await fetch(BASE + '/api/v1/admin/clients', { headers: { 'Authorization': 'Bearer ' + adminKey } });
+      if (res.ok) {
+        results.push('<span class="badge ok">Admin Key: Valid</span>');
+        localStorage.setItem('admin_key', adminKey);
+      } else {
+        results.push('<span class="badge warn">Admin Key: Invalid</span>');
+      }
+    } catch {
+      results.push('<span class="badge warn">Admin Key: Connection failed</span>');
+    }
+  } else {
+    localStorage.removeItem('admin_key');
+  }
+
+  // Validate Client API Key (use conversations endpoint — 401 = bad key, any other = key is valid)
+  if (clientKey) {
+    try {
+      const res = await fetch(BASE + '/api/v1/verify-key', { headers: { 'Authorization': 'Bearer ' + clientKey } });
+      if (res.ok) {
+        const data = await res.json();
+        results.push('<span class="badge ok">Client Key: Valid (' + data.client_name + ')</span>');
+        localStorage.setItem('client_key', clientKey);
+      } else {
+        results.push('<span class="badge warn">Client Key: Invalid</span>');
+      }
+    } catch {
+      results.push('<span class="badge warn">Client Key: Connection failed</span>');
+    }
+  } else {
+    localStorage.removeItem('client_key');
+  }
+
+  localStorage.setItem('session_id', sessionId);
+
+  statusEl.innerHTML = results.join(' &nbsp; ');
+  btn.disabled = false; btn.textContent = 'Save & Verify';
+
+  if (results.every(r => r.includes('ok'))) {
+    toast('Settings saved — all keys verified!');
+  } else if (results.some(r => r.includes('warn'))) {
+    toast('Some keys are invalid — check the status below', 'error');
+  } else {
+    toast('Settings saved!');
+  }
 }
 
 // Load saved settings
