@@ -263,6 +263,23 @@ function toast(msg, type = 'success') {
   setTimeout(() => el.remove(), 3000);
 }
 
+// --- Copy to clipboard (works on HTTP too) ---
+function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(() => toast('ID copied!'));
+  } else {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    toast('ID copied!');
+  }
+}
+
 // --- Settings ---
 function getAdminKey() { return localStorage.getItem('admin_key') || ''; }
 function getClientKey() { return localStorage.getItem('client_key') || ''; }
@@ -313,11 +330,15 @@ async function sendMessage() {
   document.getElementById('btn-send').disabled = false;
 }
 
+function linkify(text) {
+  return text.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" style="color:#6c63ff;text-decoration:underline;">$1</a>');
+}
+
 function appendMsg(text, role, meta = '') {
   const container = document.getElementById('chat-messages');
   const div = document.createElement('div');
   div.className = 'msg ' + role;
-  div.innerHTML = text + (meta ? '<div class="meta">' + meta + '</div>' : '');
+  div.innerHTML = linkify(text) + (meta ? '<div class="meta">' + meta + '</div>' : '');
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
 }
@@ -369,7 +390,7 @@ async function loadClients() {
       <td class="mono">${c.id.substring(0, 8)}...</td>
       <td>v${c.active_version}</td>
       <td><span class="badge ${c.is_active ? 'ok' : 'warn'}">${c.is_active ? 'Active' : 'Inactive'}</span></td>
-      <td><button class="btn-secondary" onclick="navigator.clipboard.writeText('${c.id}');toast('ID copied!');" style="padding:4px 12px;font-size:12px;">Copy ID</button></td>
+      <td><button class="btn-secondary" onclick="copyText('${c.id}')" style="padding:4px 12px;font-size:12px;">Copy ID</button></td>
     </tr>`).join('');
   } catch (e) {
     toast(e.message, 'error');
