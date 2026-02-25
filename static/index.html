@@ -8,11 +8,20 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; }
 
+  /* Login screen */
+  .login-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .login-card { background: #fff; border-radius: 16px; padding: 40px 32px; box-shadow: 0 4px 24px rgba(0,0,0,.1); width: 100%; max-width: 380px; text-align: center; }
+  .login-card h2 { color: #1a1a2e; margin-bottom: 6px; }
+  .login-card .subtitle { color: #888; font-size: 14px; margin-bottom: 24px; }
+
   /* Tabs */
-  .tabs { display: flex; background: #1a1a2e; }
+  .tabs { display: flex; background: #1a1a2e; align-items: center; }
   .tab { padding: 14px 28px; color: #aaa; cursor: pointer; border-bottom: 3px solid transparent; transition: all .2s; }
   .tab:hover { color: #fff; }
   .tab.active { color: #fff; border-bottom-color: #6c63ff; }
+  .tab-spacer { flex: 1; }
+  .tab-logout { padding: 8px 16px; color: #aaa; cursor: pointer; font-size: 13px; margin-right: 12px; transition: color .2s; }
+  .tab-logout:hover { color: #ff6b6b; }
   .tab-content { display: none; padding: 24px; max-width: 900px; margin: 0 auto; }
   .tab-content.active { display: block; }
   #tab-editor.active { max-width: 1200px; }
@@ -104,7 +113,6 @@
   .save-indicator { padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; }
   .save-indicator.re-embedded { background: #e8f5e9; color: #2e7d32; }
   .save-indicator.unchanged { background: #fff3e0; color: #e65100; }
-  .editor-login { max-width: 400px; margin: 60px auto; }
   .qa-checkbox { margin-right: 10px; cursor: pointer; width: 16px; height: 16px; accent-color: #6c63ff; }
   .qa-row { display: flex; align-items: flex-start; }
   .qa-row .qa-content { flex: 1; }
@@ -114,18 +122,34 @@
 </head>
 <body>
 
+<!-- ===== LOGIN SCREEN ===== -->
+<div id="login-screen" class="login-screen">
+  <div class="login-card">
+    <h2>Starship Chatbot</h2>
+    <p class="subtitle">Enter your password to continue</p>
+    <div id="login-error" class="hidden" style="padding:8px 12px;background:#fdecea;color:#c62828;border-radius:8px;margin-bottom:12px;font-size:13px;"></div>
+    <input type="password" id="login-password" placeholder="Password" onkeydown="if(event.key==='Enter')dashboardLogin()">
+    <button onclick="dashboardLogin()" id="btn-login" style="width:100%;">Sign In</button>
+  </div>
+</div>
+
+<!-- ===== DASHBOARD (hidden until login) ===== -->
+<div id="dashboard" class="hidden">
+
 <div class="tabs">
   <div class="tab active" data-tab="chat">Chat</div>
   <div class="tab" data-tab="admin">Admin</div>
   <div class="tab" data-tab="editor">Editor</div>
   <div class="tab" data-tab="settings">Settings</div>
+  <div class="tab-spacer"></div>
+  <div class="tab-logout" onclick="dashboardLogout()">Logout</div>
 </div>
 
 <!-- ===== CHAT TAB ===== -->
 <div id="tab-chat" class="tab-content active">
   <div class="card">
     <div class="chat-container" id="chat-messages">
-      <div class="msg bot">Hello! Configure your API key in <b>Settings</b>, then ask me anything.</div>
+      <div class="msg bot">Hello! Ask me anything.</div>
     </div>
     <div class="chat-input">
       <input type="text" id="chat-input" placeholder="Type your question..." onkeydown="if(event.key==='Enter')sendMessage()">
@@ -191,24 +215,9 @@
 
 <!-- ===== EDITOR TAB ===== -->
 <div id="tab-editor" class="tab-content">
-  <!-- Login Gate -->
-  <div id="editor-login" class="editor-login">
-    <div class="card">
-      <h3>Connect to Client</h3>
-      <div id="editor-login-error" class="hidden" style="padding:8px 12px;background:#fdecea;color:#c62828;border-radius:8px;margin-bottom:12px;font-size:13px;"></div>
-      <label>Client ID</label>
-      <input type="text" id="editor-client-id" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
-      <label>Admin API Key</label>
-      <input type="password" id="editor-api-key" placeholder="Your ADMIN_API_KEY">
-      <button onclick="editorLogin()" id="btn-editor-login">Connect</button>
-    </div>
-  </div>
-
-  <!-- Editor Main (hidden until login) -->
-  <div id="editor-main" class="hidden">
+  <div id="editor-main">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
       <h3 style="color:#1a1a2e;">Q&A Editor</h3>
-      <button class="btn-secondary" onclick="editorLogout()">Disconnect</button>
     </div>
     <div id="editor-save-status" class="hidden save-indicator" style="margin-bottom:12px;"></div>
     <div class="editor-layout">
@@ -242,18 +251,17 @@
   </div>
 </div>
 
+</div><!-- end #dashboard -->
+
 <script>
 const BASE = window.location.origin;
 
-// --- Tab switching ---
-document.querySelectorAll('.tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
-    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
-  });
-});
+// --- State ---
+function getAdminKey() { return localStorage.getItem('admin_key') || ''; }
+function getClientKey() { return localStorage.getItem('client_key') || ''; }
+function getClientId() { return localStorage.getItem('client_id') || ''; }
+function getSessionId() { return localStorage.getItem('session_id') || 'web-ui-1'; }
+function isLoggedIn() { return !!getClientKey() && !!getAdminKey(); }
 
 // --- Toast ---
 function toast(msg, type = 'success') {
@@ -281,10 +289,86 @@ function copyText(text) {
   }
 }
 
-// --- Settings ---
-function getAdminKey() { return localStorage.getItem('admin_key') || ''; }
-function getClientKey() { return localStorage.getItem('client_key') || ''; }
-function getSessionId() { return localStorage.getItem('session_id') || 'web-ui-1'; }
+// ===== DASHBOARD LOGIN / LOGOUT =====
+
+async function dashboardLogin() {
+  const pw = document.getElementById('login-password').value;
+  if (!pw) return;
+  const btn = document.getElementById('btn-login');
+  const errEl = document.getElementById('login-error');
+  btn.disabled = true; btn.textContent = 'Signing in...';
+  errEl.classList.add('hidden');
+
+  try {
+    const res = await fetch(BASE + '/api/v1/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Login failed');
+
+    // Store everything
+    localStorage.setItem('client_key', data.client_api_key);
+    localStorage.setItem('admin_key', data.admin_api_key);
+    localStorage.setItem('client_id', data.client_id);
+
+    showDashboard();
+    toast('Welcome, ' + data.client_name + '!');
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.classList.remove('hidden');
+  }
+  btn.disabled = false; btn.textContent = 'Sign In';
+}
+
+function showDashboard() {
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('dashboard').classList.remove('hidden');
+
+  // Pre-fill Settings
+  document.getElementById('admin-key').value = getAdminKey();
+  document.getElementById('client-key').value = getClientKey();
+  document.getElementById('session-id').value = getSessionId();
+
+  // Pre-fill Upload client ID
+  document.getElementById('upload-client-id').value = getClientId();
+
+  // Auto-connect Editor
+  editorAutoConnect();
+}
+
+function dashboardLogout() {
+  localStorage.removeItem('client_key');
+  localStorage.removeItem('admin_key');
+  localStorage.removeItem('client_id');
+  localStorage.removeItem('session_id');
+  editorClientId = ''; editorApiKey = '';
+  editorTopics = []; editorCurrentTopic = null;
+  editorSelectedQA.clear(); editorEditingId = null;
+
+  document.getElementById('dashboard').classList.add('hidden');
+  document.getElementById('login-screen').classList.remove('hidden');
+  document.getElementById('login-password').value = '';
+  document.getElementById('login-error').classList.add('hidden');
+}
+
+// Auto-show dashboard if already logged in
+if (isLoggedIn()) {
+  showDashboard();
+}
+
+// --- Tab switching ---
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+// ===== SETTINGS =====
 
 async function saveSettings() {
   const adminKey = document.getElementById('admin-key').value.trim();
@@ -297,7 +381,6 @@ async function saveSettings() {
   statusEl.innerHTML = '';
   let results = [];
 
-  // Validate Admin API Key
   if (adminKey) {
     try {
       const res = await fetch(BASE + '/api/v1/admin/clients', { headers: { 'Authorization': 'Bearer ' + adminKey } });
@@ -314,7 +397,6 @@ async function saveSettings() {
     localStorage.removeItem('admin_key');
   }
 
-  // Validate Client API Key (use conversations endpoint — 401 = bad key, any other = key is valid)
   if (clientKey) {
     try {
       const res = await fetch(BASE + '/api/v1/verify-key', { headers: { 'Authorization': 'Bearer ' + clientKey } });
@@ -333,7 +415,6 @@ async function saveSettings() {
   }
 
   localStorage.setItem('session_id', sessionId);
-
   statusEl.innerHTML = results.join(' &nbsp; ');
   btn.disabled = false; btn.textContent = 'Save & Verify';
 
@@ -346,21 +427,16 @@ async function saveSettings() {
   }
 }
 
-// Load saved settings
-document.getElementById('admin-key').value = getAdminKey();
-document.getElementById('client-key').value = getClientKey();
-document.getElementById('session-id').value = getSessionId();
+// ===== CHAT =====
 
-// --- Chat ---
 async function sendMessage() {
   const input = document.getElementById('chat-input');
   const question = input.value.trim();
   if (!question) return;
 
   const key = getClientKey();
-  if (!key) { toast('Set your Client API Key in Settings first', 'error'); return; }
+  if (!key) { toast('Session expired — please refresh', 'error'); return; }
 
-  // Show user message
   appendMsg(question, 'user');
   input.value = '';
   document.getElementById('btn-send').disabled = true;
@@ -397,12 +473,13 @@ function appendMsg(text, role, meta = '') {
   container.scrollTop = container.scrollHeight;
 }
 
-// --- Admin: Create Client ---
+// ===== ADMIN =====
+
 async function createClient() {
   const name = document.getElementById('new-client-name').value.trim();
   if (!name) return;
   const key = getAdminKey();
-  if (!key) { toast('Set your Admin API Key in Settings first', 'error'); return; }
+  if (!key) { toast('Admin key not configured', 'error'); return; }
 
   try {
     const res = await fetch(BASE + '/api/v1/admin/clients', {
@@ -422,10 +499,9 @@ async function createClient() {
   }
 }
 
-// --- Admin: List Clients ---
 async function loadClients() {
   const key = getAdminKey();
-  if (!key) { toast('Set your Admin API Key in Settings first', 'error'); return; }
+  if (!key) { toast('Admin key not configured', 'error'); return; }
 
   try {
     const res = await fetch(BASE + '/api/v1/admin/clients', {
@@ -478,7 +554,7 @@ async function uploadFile() {
   if (!clientId) { toast('Enter a Client ID', 'error'); return; }
   if (!selectedFile) { toast('Select a JSON file', 'error'); return; }
   const key = getAdminKey();
-  if (!key) { toast('Set your Admin API Key in Settings first', 'error'); return; }
+  if (!key) { toast('Admin key not configured', 'error'); return; }
 
   const btn = document.getElementById('btn-upload');
   btn.disabled = true;
@@ -509,30 +585,20 @@ async function uploadFile() {
   btn.textContent = 'Upload & Embed';
 }
 
-// --- Navigate from Chat to Editor ---
+// ===== NAVIGATE CHAT → EDITOR =====
+
 function navigateToEdit(topicId, qaId) {
-  // Switch to Editor tab
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
   document.querySelector('[data-tab="editor"]').classList.add('active');
   document.getElementById('tab-editor').classList.add('active');
-
-  // If not logged in to editor, store the target and let user log in
-  if (!editorClientId || !editorApiKey) {
-    sessionStorage.setItem('editor_pending_topic', topicId);
-    sessionStorage.setItem('editor_pending_qa', qaId);
-    toast('Connect to the client first, then the QA pair will open automatically');
-    return;
-  }
-
-  // Already connected — load the topic and scroll to the QA pair
   editorLoadTopicAndEdit(topicId, qaId);
 }
 
 async function editorLoadTopicAndEdit(topicId, qaId) {
   try {
     const res = await fetch(BASE + '/api/v1/admin/clients/' + editorClientId + '/topics/' + topicId, { headers: editorFetchHeaders() });
-    if (res.status === 401 || res.status === 403) { editorLogout(); toast('Session expired', 'error'); return; }
+    if (res.status === 401 || res.status === 403) { dashboardLogout(); toast('Session expired', 'error'); return; }
     if (!res.ok) throw new Error('Failed to load topic');
     editorCurrentTopic = await res.json();
     editorSelectedQA.clear();
@@ -543,12 +609,13 @@ async function editorLoadTopicAndEdit(topicId, qaId) {
   } catch (e) { toast(e.message, 'error'); }
 }
 
-// --- Editor ---
+// ===== EDITOR =====
+
 let editorClientId = '';
 let editorApiKey = '';
 let editorTopics = [];
-let editorCurrentTopic = null; // TopicDetail
-let editorSelectedQA = new Set(); // Set of QA pair UUIDs
+let editorCurrentTopic = null;
+let editorSelectedQA = new Set();
 let editorEditingId = null;
 
 function editorAuthHeaders() {
@@ -559,68 +626,44 @@ function editorFetchHeaders() {
   return { 'Authorization': 'Bearer ' + editorApiKey };
 }
 
-async function editorLogin() {
-  const cid = document.getElementById('editor-client-id').value.trim();
-  const key = document.getElementById('editor-api-key').value.trim();
-  const errEl = document.getElementById('editor-login-error');
-  if (!cid || !key) { errEl.textContent = 'Both fields are required.'; errEl.classList.remove('hidden'); return; }
-
-  const btn = document.getElementById('btn-editor-login');
-  btn.disabled = true; btn.textContent = 'Connecting...';
-  errEl.classList.add('hidden');
+async function editorAutoConnect() {
+  const cid = getClientId();
+  const key = getAdminKey();
+  if (!cid || !key) return;
 
   try {
     const res = await fetch(BASE + '/api/v1/admin/clients/' + cid + '/topics', { headers: { 'Authorization': 'Bearer ' + key } });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      if (res.status === 401 || res.status === 403) throw new Error('Invalid API Key.');
-      if (res.status === 404) throw new Error('Client not found.');
-      throw new Error(data.detail || 'Connection failed.');
-    }
+    if (!res.ok) return;
     editorClientId = cid;
     editorApiKey = key;
-    sessionStorage.setItem('editor_cid', cid);
-    sessionStorage.setItem('editor_key', key);
-    document.getElementById('editor-login').classList.add('hidden');
-    document.getElementById('editor-main').classList.remove('hidden');
-    const topics = await res.json();
-    editorTopics = topics;
+    editorTopics = await res.json();
     renderEditorTopics();
-    // Check for pending navigation from Chat tab
-    const pendingTopic = sessionStorage.getItem('editor_pending_topic');
-    const pendingQA = sessionStorage.getItem('editor_pending_qa');
-    if (pendingTopic && pendingQA) {
-      sessionStorage.removeItem('editor_pending_topic');
-      sessionStorage.removeItem('editor_pending_qa');
-      editorLoadTopicAndEdit(pendingTopic, pendingQA);
-    }
-  } catch (e) {
-    errEl.textContent = e.message; errEl.classList.remove('hidden');
-  }
-  btn.disabled = false; btn.textContent = 'Connect';
+  } catch { /* silent — editor just won't pre-load */ }
 }
 
-function editorLogout() {
-  editorClientId = ''; editorApiKey = '';
-  editorTopics = []; editorCurrentTopic = null;
-  editorSelectedQA.clear(); editorEditingId = null;
-  sessionStorage.removeItem('editor_cid');
-  sessionStorage.removeItem('editor_key');
-  document.getElementById('editor-login').classList.remove('hidden');
-  document.getElementById('editor-main').classList.add('hidden');
-  document.getElementById('editor-login-error').classList.add('hidden');
-  document.getElementById('editor-save-status').classList.add('hidden');
+async function editorLoadTopics() {
+  try {
+    const res = await fetch(BASE + '/api/v1/admin/clients/' + editorClientId + '/topics', { headers: editorFetchHeaders() });
+    if (res.status === 401 || res.status === 403) { dashboardLogout(); toast('Session expired', 'error'); return; }
+    if (!res.ok) throw new Error('Failed to load topics');
+    editorTopics = await res.json();
+    renderEditorTopics();
+  } catch (e) { toast(e.message, 'error'); }
 }
 
-// Auto-restore session
-(function() {
-  const cid = sessionStorage.getItem('editor_cid');
-  const key = sessionStorage.getItem('editor_key');
-  if (cid && key) {
-    document.getElementById('editor-client-id').value = cid;
-    document.getElementById('editor-api-key').value = key;
-  }
-})();
+async function editorLoadTopic(topicId) {
+  try {
+    const res = await fetch(BASE + '/api/v1/admin/clients/' + editorClientId + '/topics/' + topicId, { headers: editorFetchHeaders() });
+    if (res.status === 401 || res.status === 403) { dashboardLogout(); toast('Session expired', 'error'); return; }
+    if (!res.ok) throw new Error('Failed to load topic');
+    editorCurrentTopic = await res.json();
+    editorSelectedQA.clear();
+    editorEditingId = null;
+    document.getElementById('editor-save-status').classList.add('hidden');
+    renderEditorTopics();
+    renderEditorDetail();
+  } catch (e) { toast(e.message, 'error'); }
+}
 
 function renderEditorTopics() {
   const el = document.getElementById('editor-topics');
@@ -637,30 +680,6 @@ function escHtml(s) {
   const d = document.createElement('div');
   d.textContent = s;
   return d.innerHTML;
-}
-
-async function editorLoadTopics() {
-  try {
-    const res = await fetch(BASE + '/api/v1/admin/clients/' + editorClientId + '/topics', { headers: editorFetchHeaders() });
-    if (res.status === 401 || res.status === 403) { editorLogout(); toast('Session expired', 'error'); return; }
-    if (!res.ok) throw new Error('Failed to load topics');
-    editorTopics = await res.json();
-    renderEditorTopics();
-  } catch (e) { toast(e.message, 'error'); }
-}
-
-async function editorLoadTopic(topicId) {
-  try {
-    const res = await fetch(BASE + '/api/v1/admin/clients/' + editorClientId + '/topics/' + topicId, { headers: editorFetchHeaders() });
-    if (res.status === 401 || res.status === 403) { editorLogout(); toast('Session expired', 'error'); return; }
-    if (!res.ok) throw new Error('Failed to load topic');
-    editorCurrentTopic = await res.json();
-    editorSelectedQA.clear();
-    editorEditingId = null;
-    document.getElementById('editor-save-status').classList.add('hidden');
-    renderEditorTopics();
-    renderEditorDetail();
-  } catch (e) { toast(e.message, 'error'); }
 }
 
 function renderEditorDetail() {
@@ -757,7 +776,7 @@ async function editorSaveEdit(qaId) {
       headers: editorAuthHeaders(),
       body: JSON.stringify({ new_question: q, new_answer: a })
     });
-    if (res.status === 401 || res.status === 403) { editorLogout(); toast('Session expired', 'error'); return; }
+    if (res.status === 401 || res.status === 403) { dashboardLogout(); toast('Session expired', 'error'); return; }
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Save failed');
 
@@ -788,7 +807,7 @@ async function editorDeleteSelected() {
       headers: editorAuthHeaders(),
       body: JSON.stringify({ qa_pair_ids: ids })
     });
-    if (res.status === 401 || res.status === 403) { editorLogout(); toast('Session expired', 'error'); return; }
+    if (res.status === 401 || res.status === 403) { dashboardLogout(); toast('Session expired', 'error'); return; }
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Delete failed');
 
@@ -799,7 +818,8 @@ async function editorDeleteSelected() {
   } catch (e) { toast(e.message, 'error'); }
 }
 
-// --- Health ---
+// ===== HEALTH =====
+
 async function checkHealth() {
   try {
     const res = await fetch(BASE + '/api/v1/health', {

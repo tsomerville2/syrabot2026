@@ -8,6 +8,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth import get_client_from_api_key
+from config import settings
 from database import get_db
 from models import Client, Conversation
 from schemas import (
@@ -16,12 +17,43 @@ from schemas import (
     ConversationHistory,
     ConversationItem,
     HealthResponse,
+    PasswordLoginRequest,
+    PasswordLoginResponse,
 )
 from services import search as search_service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["chat"])
+
+
+@router.post("/auth/login", response_model=PasswordLoginResponse)
+async def password_login(
+    body: PasswordLoginRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Exchange a simple password for the client API key."""
+    if not settings.chat_password or body.password != settings.chat_password:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect password",
+        )
+    # Return the first active client's key (single-client setup)
+    result = await db.execute(
+        select(Client).where(Client.is_active == True).limit(1)  # noqa: E712
+    )
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No active client configured",
+        )
+    return PasswordLoginResponse(
+        client_api_key=client.api_key,
+        client_name=client.name,
+        client_id=str(client.id),
+        admin_api_key=settings.admin_api_key,
+    )
 
 
 @router.post("/chat", response_model=ChatResponse)

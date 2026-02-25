@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/chatbot_service"
     gemini_api_key: str = ""
     admin_api_key: str = ""
+    chat_password: str = ""
 
     embedding_model: str = "models/gemini-embedding-001"
     embedding_dim: int = 3072

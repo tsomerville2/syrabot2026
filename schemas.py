@@ -110,6 +110,19 @@ class QADeleteResponse(BaseModel):
     deleted_count: int
 
 
+# ── Password Login ─────────────────────────────────────────────
+
+class PasswordLoginRequest(BaseModel):
+    password: str = Field(..., min_length=1)
+
+
+class PasswordLoginResponse(BaseModel):
+    client_api_key: str
+    client_name: str
+    client_id: str
+    admin_api_key: str
+
+
 # ── Chat ────────────────────────────────────────────────────────
 
 class ChatRequest(BaseModel):
