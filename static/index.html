@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Starship Chatbot Service</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; }
@@ -25,6 +26,7 @@
   .tab-content { display: none; padding: 24px; max-width: 900px; margin: 0 auto; }
   .tab-content.active { display: block; }
   #tab-editor.active { max-width: 1200px; }
+  #tab-tree.active { max-width: 1200px; }
 
   /* Cards */
   .card { background: #fff; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
@@ -118,6 +120,25 @@
   .qa-row .qa-content { flex: 1; }
   .btn-edit { background: #f5f5f5; color: #333; padding: 4px 10px; font-size: 12px; border: 1px solid #ddd; }
   .btn-edit:hover { background: #eee; }
+
+  /* Semantic Tree */
+  .btn-tree { background: #2e7d32; }
+  .btn-tree:hover { background: #1b5e20; }
+  .tree-container { position: relative; border: 1px solid #eee; border-radius: 12px; background: #fafafa; overflow: hidden; height: 500px; }
+  .tree-container svg { display: block; cursor: grab; }
+  .tree-container svg:active { cursor: grabbing; }
+  .tree-hint { text-align: center; font-size: 11px; color: #999; padding: 6px; border-top: 1px solid #eee; background: #fff; }
+  .tree-container .node circle { fill: #94a3b8; stroke: #cbd5e1; stroke-width: 1.5px; }
+  .tree-container .node text { font: 11px -apple-system, BlinkMacSystemFont, sans-serif; fill: #475569; }
+  .tree-container .node:hover circle { fill: #64748b; stroke: #475569; }
+  .tree-container .node:hover text { fill: #1e293b; }
+  .tree-container .node-selected { fill: #ef4444 !important; stroke: #dc2626 !important; stroke-width: 3px !important; }
+  .tree-container .node-selected-ring { fill: none; stroke: #ef4444; stroke-width: 2px; opacity: 0.6; animation: pulse-ring 1.5s ease-out infinite; }
+  @keyframes pulse-ring { 0% { r: 12; opacity: 0.8; } 100% { r: 24; opacity: 0; } }
+  .tree-container .text-selected { font-weight: 700 !important; fill: #dc2626 !important; font-size: 13px !important; }
+  .tree-container .link { fill: none; stroke: #cbd5e1; stroke-opacity: 0.6; stroke-width: 1.5px; }
+  .tree-container .node--internal circle { fill: #64748b; }
+  .tree-container .node--leaf circle { fill: #94a3b8; }
 </style>
 </head>
 <body>
@@ -140,6 +161,7 @@
   <div class="tab active" data-tab="chat">Chat</div>
   <div class="tab" data-tab="admin">Admin</div>
   <div class="tab" data-tab="editor">Editor</div>
+  <div class="tab" data-tab="tree">Tree</div>
   <div class="tab" data-tab="settings">Settings</div>
   <div class="tab-spacer"></div>
   <div class="tab-logout" onclick="dashboardLogout()">Logout</div>
@@ -227,6 +249,22 @@
       <div class="card qa-list" id="editor-detail" style="margin-bottom:0;">
         <p style="color:#999;text-align:center;margin-top:40px;">Select a topic to view Q&A pairs</p>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== TREE TAB ===== -->
+<div id="tab-tree" class="tab-content">
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <div>
+        <h3 style="color:#1a1a2e;margin:0;">Semantic Tree</h3>
+        <p style="color:#888;font-size:13px;margin-top:4px;">Visual hierarchy of all topics from crawled site structure</p>
+      </div>
+    </div>
+    <div id="tree-tab-container" class="tree-container" style="height:calc(100vh - 220px);">
+      <svg id="tree-tab-svg"></svg>
+      <div class="tree-hint">Scroll to zoom &middot; Drag to pan &middot; Click a node to select it</div>
     </div>
   </div>
 </div>
@@ -365,6 +403,9 @@ document.querySelectorAll('.tab').forEach(tab => {
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
     document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+    if (tab.dataset.tab === 'tree' && !treeTabRendered && editorTopics.length) {
+      setTimeout(() => renderTreeTab(), 0);
+    }
   });
 });
 
@@ -621,6 +662,7 @@ let editorTopics = [];
 let editorCurrentTopic = null;
 let editorSelectedQA = new Set();
 let editorEditingId = null;
+let editorShowTree = false;
 
 function editorAuthHeaders() {
   return { 'Authorization': 'Bearer ' + editorApiKey, 'Content-Type': 'application/json' };
@@ -642,6 +684,7 @@ async function editorAutoConnect() {
     editorApiKey = key;
     editorTopics = await res.json();
     renderEditorTopics();
+    treeTabRendered = false;
   } catch { /* silent — editor just won't pre-load */ }
 }
 
@@ -663,6 +706,7 @@ async function editorLoadTopic(topicId) {
     editorCurrentTopic = await res.json();
     editorSelectedQA.clear();
     editorEditingId = null;
+    editorShowTree = false;
     document.getElementById('editor-save-status').classList.add('hidden');
     renderEditorTopics();
     renderEditorDetail();
@@ -705,8 +749,17 @@ function renderEditorDetail() {
     </div>
     <div class="editor-toolbar">
       <button class="btn-danger" onclick="editorDeleteSelected()" ${selectedCount === 0 ? 'disabled' : ''} style="font-size:13px;padding:6px 14px;">Delete (${selectedCount})</button>
+      <button class="btn-tree" onclick="editorToggleTree()" style="font-size:13px;padding:6px 14px;">${editorShowTree ? 'Hide Tree' : 'Show Tree'}</button>
     </div>
   `;
+
+  if (editorShowTree) {
+    html += '<div id="editor-tree-container" class="tree-container"><svg id="editor-tree-svg"></svg><div class="tree-hint">Scroll to zoom &middot; Drag to pan &middot; Selected topic is highlighted</div></div>';
+    el.innerHTML = html;
+    el.scrollTop = 0;
+    setTimeout(() => renderSemanticTree(), 0);
+    return;
+  }
 
   html += t.qa_pairs.map(qa => {
     const isSelected = editorSelectedQA.has(qa.id);
@@ -820,6 +873,236 @@ async function editorDeleteSelected() {
     await editorLoadTopic(editorCurrentTopic.id);
     await editorLoadTopics();
   } catch (e) { toast(e.message, 'error'); }
+}
+
+// ===== SEMANTIC TREE =====
+
+function editorToggleTree() {
+  editorShowTree = !editorShowTree;
+  renderEditorDetail();
+}
+
+function buildTreeFromPaths(topics) {
+  const root = { name: 'Site', title: 'Site', children: [], semantic_path: '' };
+  for (const t of topics) {
+    const path = t.semantic_path || t.topic_name;
+    // Strip protocol+domain, split by // then /
+    let cleaned = path.replace(/^https?:\/\/[^/]+\/?/, '');
+    const parts = cleaned.split(/\/\/|\//).filter(Boolean);
+    let current = root;
+    for (const part of parts) {
+      let child = current.children.find(c => c.name === part);
+      if (!child) {
+        child = { name: part, title: part, children: [], semantic_path: path };
+        current.children.push(child);
+      }
+      current = child;
+    }
+    // Mark the leaf with topic info
+    current.title = t.topic_name;
+    current.semantic_path = path;
+    current._topicId = t.id;
+  }
+  return root;
+}
+
+function nodeMatchesTopic(node, topicName) {
+  const name = node.title || node.name || '';
+  const path = node.semantic_path || '';
+  return name === topicName ||
+         path.endsWith('/' + topicName) ||
+         path.endsWith('//' + topicName);
+}
+
+function renderSemanticTree() {
+  const svg = d3.select('#editor-tree-svg');
+  const container = document.getElementById('editor-tree-container');
+  if (!svg.node() || !container) return;
+
+  const selectedTopicName = editorCurrentTopic ? editorCurrentTopic.topic_name : '';
+  const treeData = buildTreeFromPaths(editorTopics);
+
+  const containerWidth = container.clientWidth || 900;
+  const containerHeight = 460;
+  const margin = { top: 20, right: 120, bottom: 20, left: 120 };
+
+  svg.attr('width', containerWidth).attr('height', containerHeight);
+  svg.selectAll('*').remove();
+
+  const g = svg.append('g');
+  const root = d3.hierarchy(treeData);
+
+  const treeLayout = d3.tree()
+    .nodeSize([24, 200])
+    .separation((a, b) => a.parent === b.parent ? 1 : 1.5);
+
+  treeLayout(root);
+
+  // Links
+  g.selectAll('.link')
+    .data(root.links())
+    .enter()
+    .append('path')
+    .attr('class', 'link')
+    .attr('d', d3.linkHorizontal()
+      .x(d => d.y)
+      .y(d => d.x)
+    );
+
+  // Nodes
+  const node = g.selectAll('.node')
+    .data(root.descendants())
+    .enter()
+    .append('g')
+    .attr('class', d => {
+      const sel = nodeMatchesTopic(d.data, selectedTopicName);
+      return 'node ' + (d.children ? 'node--internal' : 'node--leaf') + (sel ? ' node--selected' : '');
+    })
+    .attr('transform', d => 'translate(' + d.y + ',' + d.x + ')');
+
+  // Circles
+  node.append('circle')
+    .attr('r', d => nodeMatchesTopic(d.data, selectedTopicName) ? 10 : 5)
+    .attr('class', d => nodeMatchesTopic(d.data, selectedTopicName) ? 'node-selected' : '');
+
+  // Pulsing ring on selected
+  node.filter(d => nodeMatchesTopic(d.data, selectedTopicName))
+    .append('circle')
+    .attr('r', 16)
+    .attr('class', 'node-selected-ring');
+
+  // Labels
+  node.append('text')
+    .attr('dy', '0.31em')
+    .attr('x', d => d.children ? -12 : 12)
+    .attr('text-anchor', d => d.children ? 'end' : 'start')
+    .text(d => {
+      const title = d.data.title || d.data.name || '';
+      return title.length > 40 ? title.substring(0, 40) + '...' : title;
+    })
+    .attr('class', d => nodeMatchesTopic(d.data, selectedTopicName) ? 'text-selected' : '')
+    .append('title')
+    .text(d => d.data.title || d.data.name || '');
+
+  // Zoom
+  const zoom = d3.zoom()
+    .scaleExtent([0.2, 4])
+    .on('zoom', (event) => g.attr('transform', event.transform));
+
+  svg.call(zoom);
+
+  // Auto-zoom to selected node
+  const selectedNode = root.descendants().find(d => nodeMatchesTopic(d.data, selectedTopicName));
+  if (selectedNode) {
+    const nodeX = selectedNode.y;
+    const nodeY = selectedNode.x;
+    const scale = 1.5;
+    const translateX = containerWidth / 2 - nodeX * scale;
+    const translateY = containerHeight / 2 - nodeY * scale;
+    svg.transition().duration(750).call(
+      zoom.transform,
+      d3.zoomIdentity.translate(translateX, translateY).scale(scale)
+    );
+  } else {
+    const bounds = g.node().getBBox();
+    if (bounds) {
+      const fullWidth = bounds.width + margin.left + margin.right;
+      const fullHeight = bounds.height + margin.top + margin.bottom;
+      const scale = Math.min(containerWidth / fullWidth, containerHeight / fullHeight, 1) * 0.9;
+      const translateX = containerWidth / 2 - (bounds.x + bounds.width / 2) * scale;
+      const translateY = containerHeight / 2 - (bounds.y + bounds.height / 2) * scale;
+      svg.call(zoom.transform, d3.zoomIdentity.translate(translateX, translateY).scale(scale));
+    }
+  }
+}
+
+// ===== TREE TAB =====
+
+let treeTabRendered = false;
+
+function renderTreeTab() {
+  if (!editorTopics.length) return;
+
+  const svg = d3.select('#tree-tab-svg');
+  const container = document.getElementById('tree-tab-container');
+  if (!svg.node() || !container) return;
+
+  const treeData = buildTreeFromPaths(editorTopics);
+  const containerWidth = container.clientWidth || 900;
+  const containerHeight = container.clientHeight - 30 || 600;
+  const margin = { top: 20, right: 120, bottom: 20, left: 120 };
+
+  svg.attr('width', containerWidth).attr('height', containerHeight);
+  svg.selectAll('*').remove();
+
+  const g = svg.append('g');
+  const root = d3.hierarchy(treeData);
+
+  const treeLayout = d3.tree()
+    .nodeSize([24, 200])
+    .separation((a, b) => a.parent === b.parent ? 1 : 1.5);
+
+  treeLayout(root);
+
+  // Links
+  g.selectAll('.link')
+    .data(root.links())
+    .enter()
+    .append('path')
+    .attr('class', 'link')
+    .attr('d', d3.linkHorizontal().x(d => d.y).y(d => d.x));
+
+  // Nodes
+  const node = g.selectAll('.node')
+    .data(root.descendants())
+    .enter()
+    .append('g')
+    .attr('class', d => 'node ' + (d.children ? 'node--internal' : 'node--leaf'))
+    .attr('transform', d => 'translate(' + d.y + ',' + d.x + ')')
+    .style('cursor', 'pointer')
+    .on('click', (event, d) => {
+      if (d.data._topicId) {
+        // Navigate to editor with this topic selected
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+        document.querySelector('[data-tab="editor"]').classList.add('active');
+        document.getElementById('tab-editor').classList.add('active');
+        editorLoadTopic(d.data._topicId);
+      }
+    });
+
+  node.append('circle').attr('r', 5);
+
+  node.append('text')
+    .attr('dy', '0.31em')
+    .attr('x', d => d.children ? -12 : 12)
+    .attr('text-anchor', d => d.children ? 'end' : 'start')
+    .text(d => {
+      const title = d.data.title || d.data.name || '';
+      return title.length > 40 ? title.substring(0, 40) + '...' : title;
+    })
+    .append('title')
+    .text(d => d.data.title || d.data.name || '');
+
+  // Zoom
+  const zoom = d3.zoom()
+    .scaleExtent([0.2, 4])
+    .on('zoom', (event) => g.attr('transform', event.transform));
+
+  svg.call(zoom);
+
+  // Fit to view
+  const bounds = g.node().getBBox();
+  if (bounds) {
+    const fullWidth = bounds.width + margin.left + margin.right;
+    const fullHeight = bounds.height + margin.top + margin.bottom;
+    const scale = Math.min(containerWidth / fullWidth, containerHeight / fullHeight, 1) * 0.9;
+    const translateX = containerWidth / 2 - (bounds.x + bounds.width / 2) * scale;
+    const translateY = containerHeight / 2 - (bounds.y + bounds.height / 2) * scale;
+    svg.call(zoom.transform, d3.zoomIdentity.translate(translateX, translateY).scale(scale));
+  }
+
+  treeTabRendered = true;
 }
 
 // ===== HEALTH =====
